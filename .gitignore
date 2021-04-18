@@ -2,5 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
+*.html
 2007_Res_Calibration.Rproj
 documents/

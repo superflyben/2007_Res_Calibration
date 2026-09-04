@@ -104,8 +104,19 @@ plot_ly(x = surfdat$Tdat,
 
 # Next Steps --------------------------------------------------------------
 
+# Very next step:
+# - Find the raw data and Matlab processing script, and clean up just enough
+#   to include in the repo.
+
 # --> pick data section to use in calculating scale factor
 #       - refer to  /Users/ben/Dropbox/9North/Calibration/2007/scalefactor.m
+#       - ok, but what data are we using?
+#       - simplify by using cleaned output from Matlab Script
+#       - Clean up Matlab code just enough to produce a file that can be ingested by R
+#       - Main point of the R project is to demo the calibration process
+#       - NOT the rando data cleaning or outdataed phase separation analysis
+#       - Could potentially include one figure to illustrate utility
+#       - This does not need to be a Nature paper, just functional.
 
 # --> Apply scale factors and convert conductivity to salt concentration 
 #       - /Users/ben/Dropbox/9North/Calibration/2007/adjust.m
@@ -134,5 +145,26 @@ plot_ly(x = surfdat$Tdat,
 # - Could separately include the process used to get the Bio9 Prime data into 
 #   shape, or just include the cleaned data without re-doing the processing for
 #   the guthub repo.
-#
-#   
+
+# So what does this project look like?
+# - Motivation at this point is to put a pin in it
+# - Perfect world: calibration process on Git hub wih 2 datasets
+# - each datset is published and can be linked to a paper
+# - EGU is done
+# - 9N Should be bare f'ing minimum to get into a journal
+# - This is NOT a modeling paper. 
+# - Would anybody ever use this or care about it?
+# - Or is it just for me and Marv?
+# - How much work would be involved
+# - In the beginng: a lot!
+# - Simplify at every available opportunity 
+# - Funded grant would make this so much more doable. 
+# - Maybe don't worry about publishing
+# - Just finish it off as a Github repo wit two examples and move on
+# - Or self publish one or two graphics and be done.
+# - Still involves recreating the steps in the Matlab script
+# - Or just use the cleaned output and cite the script. 
+# - Because nobody will bother to inspect that work
+# - And just because it could be re-done in R doesn't mean it should be
+# - Also the repo can contain Matlab scripts for some of the analysis
+# - And keep in mind, nobody will look at this.

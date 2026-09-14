@@ -51,11 +51,38 @@ names(cal07) <- names(cal07) %>%
     gsub("\\.+", "_", .)
 
 # Remove duplicate data (keep only corrected data points at the lower pressure)
+# NOTE: 700 mmol/kg @ 202.1 C is duplicated at the *same* pressure (256.2), with
+#       C = 2.7726 and 2.9852, so pressure alone cannot break that tie. The
+#       Matlab pipeline (mmall.csv) uses 2.9852, the later of the two rows, so
+#       ties are broken by taking the last matching row in sheet order. This is
+#       the only node in the sheet where the tie-break matters; the genuine
+#       two-pressure duplicates (379.7 and 395.5 blocks, 256.2 vs 307.4) are
+#       resolved by the pressure filter as before.
 cal07_no_dup <- cal07 %>% 
     group_by(NaCl_mmol_kg, Temperature_C) %>% 
-    arrange(Pressure_kgf_cm2) %>% 
-    summarise_all(first) %>% 
+    filter(Pressure_kgf_cm2 == min(Pressure_kgf_cm2)) %>% 
+    slice_tail(n = 1) %>% 
     ungroup()
+
+# Replace the bad 1000 mmol/kg @ 350.4 C measurement
+# The spreadsheet retains the measured C = 4.0717, but that point was rejected
+# when the Matlab surface was built: TSCsurface.m drops it and reconstructs it by
+# linear interpolation across the rest of the 350 C isotherm (C = 3.59725, read
+# from c350.csv). Neighbouring isotherms put 1000 mmol/kg near 3.6-3.7, so 4.07
+# is anomalous. Reconstruct here the same way, but interpolate the isotherm as it
+# appears in the .xls rather than in c350.csv, which is a 3-decimal rounded copy
+# -- hence 3.597536 here versus Matlab's 3.597250, a difference of 3e-4 that is
+# entirely that rounding.
+bad_pt <- with(cal07_no_dup, NaCl_mmol_kg == 1000 & Temperature_C == 350.4)
+iso350 <- cal07_no_dup %>% 
+    filter(Temperature_C == 350.4, !bad_pt) %>% 
+    arrange(NaCl_mmol_kg)
+C_recon <- approx(x = iso350$NaCl_mmol_kg, y = iso350$C, xout = 1000)$y
+message(sprintf(
+    "1000 mmol/kg @ 350.4 C: replacing measured C = %.6f with reconstructed %.6f (linear interpolation across the 350.4 C isotherm in calibration_data.xls)",
+    cal07_no_dup$C[bad_pt], C_recon))
+cal07_no_dup$C[bad_pt] <- C_recon
+cal07_no_dup$Rx1[bad_pt] <- NA_real_
 
 # Use Matlab benchmark to define output grid
 Tdat <- unique(surfdat$Tdat)

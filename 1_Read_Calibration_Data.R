@@ -84,21 +84,50 @@ message(sprintf(
 cal07_no_dup$C[bad_pt] <- C_recon
 cal07_no_dup$Rx1[bad_pt] <- NA_real_
 
-# Use Matlab benchmark to define output grid
-Tdat <- unique(surfdat$Tdat)
-Sdat <- unique(surfdat$Sdat)
+# Output grid --------------------------------------------------------------
+
+# Every surface in this project must be evaluated on an explicitly specified
+# grid. interp()'s default is 40x40 spanning whatever data it was handed, which
+# is neither comparable to the Matlab benchmark's 20x20 nor shared with the 2000
+# Juan de Fuca surface -- and two surfaces cannot be subtracted node for node
+# unless they sit on the same grid.
+#
+# The grid of record is the one the Matlab surface already uses: 20x20 over
+# T 202-395.5 C and S 100-1500 mmol/kg. Taking it from surfdat.mat rather than
+# restating the numbers keeps the benchmark comparison exact by construction.
+T_grid <- sort(unique(as.vector(surfdat$Tdat)))
+S_grid <- sort(unique(as.vector(surfdat$Sdat)))
 
 # Interpolation
-# --> Fix to include custom grid 
 R_surfdat <- interp(x = cal07_no_dup$Temperature_C,
                     y = cal07_no_dup$NaCl_mmol_kg, 
-                    z = cal07_no_dup$C)
+                    z = cal07_no_dup$C,
+                    xo = T_grid,
+                    yo = S_grid,
+                    extrap = FALSE)
 
 # Convert to matrix format for creating surface plot
-# NOTE: works with temperature constant across rows and salt constant down columns
-#       which is the transpose of what's read in from Matlab. Not sure why 
-R_surfdat$T_grid <- matrix(data = R_surfdat$x, nrow = 40, ncol = 40, byrow = FALSE)
-R_surfdat$S_grid <- matrix(data = R_surfdat$y, nrow = 40, ncol = 40, byrow = TRUE)
+# NOTE: interp returns z[i, j] = f(x[i], y[j]), so temperature varies down rows
+#       and salt across columns -- the transpose of what's read in from Matlab.
+R_surfdat$T_grid <- matrix(data = R_surfdat$x, 
+                           nrow = length(R_surfdat$x), ncol = length(R_surfdat$y), 
+                           byrow = FALSE)
+R_surfdat$S_grid <- matrix(data = R_surfdat$y, 
+                           nrow = length(R_surfdat$x), ncol = length(R_surfdat$y), 
+                           byrow = TRUE)
+
+# Compare against the Matlab benchmark, node for node
+# Both surfaces are now on the same grid, so this is a like-for-like difference.
+# NOTE: interp() defaults to linear interpolation while TSCsurface.m uses
+#       griddata(...,'cubic'), so a residual here is expected and is a *method*
+#       difference, not a data one -- the inputs now agree to mmall.csv's rounding.
+R_vs_matlab <- R_surfdat$z - t(surfdat$Cdat)
+message(sprintf(
+    "R vs Matlab on the shared %dx%d grid: %d of %d nodes finite in both, max |dC| = %.4f, RMS = %.4f",
+    length(T_grid), length(S_grid),
+    sum(is.finite(R_vs_matlab)), length(R_vs_matlab),
+    max(abs(R_vs_matlab), na.rm = TRUE),
+    sqrt(mean(R_vs_matlab^2, na.rm = TRUE))))
 
 # Visualize the surface
 p <- plot_ly(x = R_surfdat$T_grid, 

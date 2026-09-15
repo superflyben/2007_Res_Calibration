@@ -167,6 +167,29 @@ function pointTrace(p) {
   };
 }
 
+// Everything below that touches Plotly is guarded. When the library is missing
+// -- offline, or a network that blocks the CDN -- the first newPlot would throw
+// and every later statement in this block, including the tables and the
+// converter, would never run. The page then reads as if it were broken rather
+// than merely reduced. Draw what we can instead.
+const HAVE_PLOTLY = typeof Plotly !== "undefined";
+
+document.getElementById("fval").textContent = DATA.f.toFixed(4);
+
+if (!HAVE_PLOTLY) {
+  ["p07", "p00", "pdev"].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.height = "auto";
+    el.innerHTML = "<p class='warn' style='margin:18px 0'>The three-dimensional " +
+      "plots are drawn by a library loaded over the network, which is not " +
+      "reachable right now. Everything else on this page still works. A copy " +
+      "with the library built in, which needs no connection, is available as " +
+      "Calibration_App_standalone.html.</p>";
+  });
+}
+
+if (HAVE_PLOTLY) {
+
 Plotly.newPlot("p07",
   [surfaceTrace(DATA.s07, "YlGnBu"), pointTrace(DATA.p07)],
   Object.assign({}, BASE, {scene: JSON.parse(JSON.stringify(SCENE)), showlegend: false}),
@@ -196,8 +219,6 @@ Plotly.newPlot("pdev",
   Object.assign({}, BASE, {scene: devScene, showlegend: false}),
   {displayModeBar: false, responsive: true});
 
-document.getElementById("fval").textContent = DATA.f.toFixed(4);
-
 // --- synchronised rotation -------------------------------------------------
 let syncing = false;
 function link(from, others) {
@@ -213,6 +234,8 @@ function link(from, others) {
 link("p07", ["p00", "pdev"]);
 link("p00", ["p07", "pdev"]);
 link("pdev", ["p07", "p00"]);
+
+}   // end of the Plotly-dependent section
 
 // --- summary table ---------------------------------------------------------
 (function () {

@@ -10,3 +10,6 @@
 2007_Res_Calibration.Rproj
 documents/
 .DS_Store
+
+# the vendored plotly copy used to build the standalone page
+app/.plotly_cache/

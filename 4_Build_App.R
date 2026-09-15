@@ -165,8 +165,41 @@ page <- sub("/*__DATA__*/", json, template, fixed = TRUE)
 
 writeLines(page, "app/Calibration_App.html", useBytes = TRUE)
 
-message(sprintf("\nWrote app/Calibration_App.html (%.0f kB)",
+# A second, standalone copy ------------------------------------------------
+
+# The page above fetches plotly from a CDN, which keeps it small enough to live
+# in git but means it needs a network connection to draw anything. For sharing
+# over Dropbox or email, write a second copy with the library inlined: nothing
+# to fetch, works offline, and works in ten years when that CDN URL has moved.
+# It is roughly 3.7 MB and is deliberately not tracked -- git would keep every
+# rebuild of it forever, which is the only reason the small copy exists.
+plotly_url <- sub('.*src="([^"]*plotly[^"]*)".*', "\\1",
+                  grep("plotly", strsplit(template, "\n")[[1]], value = TRUE)[1])
+cache_dir <- "app/.plotly_cache"
+cache <- file.path(cache_dir, basename(plotly_url))
+
+if (!file.exists(cache)) {
+    dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
+    message(sprintf("Fetching %s", plotly_url))
+    utils::download.file(plotly_url, cache, quiet = TRUE, mode = "wb")
+}
+
+lib <- readLines(cache, warn = FALSE) %>% paste(collapse = "\n")
+
+# Replace the script tag with the library itself. The closing tag has to be
+# broken up: a literal </script> inside a script block would end it early.
+page_standalone <- sub(
+    sprintf('<script src="%s"></script>', plotly_url),
+    paste0("<script>\n", gsub("</script", "<\\/script", lib, fixed = TRUE), "\n</script>"),
+    page, fixed = TRUE)
+
+stopifnot(!grepl(plotly_url, page_standalone, fixed = TRUE))
+writeLines(page_standalone, "app/Calibration_App_standalone.html", useBytes = TRUE)
+
+message(sprintf("\nWrote app/Calibration_App.html (%.0f kB, needs the CDN)",
                 file.size("app/Calibration_App.html") / 1024))
+message(sprintf("Wrote app/Calibration_App_standalone.html (%.1f MB, no dependencies)",
+                file.size("app/Calibration_App_standalone.html") / 1024^2))
 message(sprintf("  2007 display surface %dx%d, %d finite",
                 length(fine07$x), length(fine07$y), sum(is.finite(fine07$z))))
 message(sprintf("  2000 display surface %dx%d, %d finite",

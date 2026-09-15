@@ -1,23 +1,35 @@
-# Script to read in the 2000 Juan de Fuca calibration data and build its surface
+# Script to read in the 2000 Juan de Fuca calibration data and its surface
 #
 # This is the second of the two calibrations being compared. It is an independent
 # experiment on a different sensor: 5 isohalines (constant salt, varying
 # temperature) against the 2007 run's 6 isotherms, 20 points against 34, and a
 # much narrower salt range. See data/2000_JdF/SOURCE.md for provenance.
 #
-# The surface is built here with the same algorithm and on the same grid as the
-# 2007 surface in 1_Read_Calibration_Data.R, so that any difference between the
-# two reflects the data rather than the fitting method. In particular this does
-# NOT reuse the archived TSfit3 surface, which was built with a spline pre-pass
-# and gridfit.
+# The two surfaces are deliberately NOT built with the same algorithm. Each is
+# fitted the way its own data warrants:
+#
+#   2007 -> R, interp::interp on the measured points (1_Read_Calibration_Data.R)
+#   2000 -> Matlab, matlab/Build_2000_Surface.m
+#
+# The 2000 data has four measured temperatures per isohaline spanning a C(T)
+# curve that plateaus near 300 C and falls away sharply above ~350 C. Forcing it
+# through plain interpolation on the raw points does not just add noise, it adds
+# a one-directional error: straight-lining the 300->382 gap underestimates C by
+# 12-28% through the plateau (measured by removing the 2007 350 C point and
+# reconstructing it the same way). The original fit handled this with a spline
+# pre-pass along temperature, and that machinery is reused rather than replaced.
+#
+# So this script reads the Matlab surface rather than building one. Regenerate it
+# with, from the matlab/ directory:
+#
+#   matlab -batch "Build_2000_Surface;"
 
 # Housekeeping ------------------------------------------------------------
 
-library(interp)
 library(R.matlab)
 library(tidyverse)
 
-# Read in the data --------------------------------------------------------
+# Read in the measured points ---------------------------------------------
 
 # The five isohaline files, unlabelled, one per NaCl concentration.
 # Columns: NaCl (mol/kg), Temperature (deg C), Conductivity (1/V)
@@ -45,64 +57,54 @@ message(sprintf("  T %.1f-%.1f C, C %.3f-%.3f",
                 min(cal00$Temperature_C), max(cal00$Temperature_C),
                 min(cal00$C), max(cal00$C)))
 
-# Output grid -------------------------------------------------------------
+# Read in the surface -----------------------------------------------------
 
-# The grid of record, defined in 1_Read_Calibration_Data.R: the 20x20 nodes the
-# Matlab surface uses, read from surfdat.mat rather than restated, so that the
-# two surfaces are on identical nodes by construction and can be differenced.
-surfdat <- readMat("../Calibration/2007/surfdat.mat")
-T_grid <- sort(unique(as.vector(surfdat$Tdat)))
-S_grid <- sort(unique(as.vector(surfdat$Sdat)))
+# Built by matlab/Build_2000_Surface.m: interpmmlarson spline along temperature
+# within each isohaline, then griddata (cubic) onto the grid of record. griddata
+# returns NA outside the convex hull of the data, so the surface is only defined
+# where there are measurements behind it -- which is what lets the comparison in
+# script 3 be masked honestly.
+surf00 <- readMat("matlab/surfdat2000.mat")
 
-# Interpolation -----------------------------------------------------------
+# Grid of record, and the surface on it. Matlab's meshgrid puts salt down rows
+# and temperature across columns; transpose to the layout the R scripts use,
+# z[i, j] = f(T[i], S[j]).
+T_grid_00 <- sort(unique(as.vector(surf00$Tdat)))
+S_grid_00 <- sort(unique(as.vector(surf00$Sdat)))
+z00 <- t(surf00$Cdat)
 
-# Same call as the 2007 surface: linear, no extrapolation. Nodes outside the
-# convex hull of the 20 data points come back NA, which is what restricts this
-# surface to the overlap region.
-R_surfdat_00 <- interp(x = cal00$Temperature_C,
-                       y = cal00$NaCl_mmol_kg,
-                       z = cal00$C,
-                       xo = T_grid,
-                       yo = S_grid,
-                       extrap = FALSE)
+n_finite <- sum(is.finite(z00))
+message(sprintf("2000 surface (griddata '%s') on the grid of record: %d of %d nodes finite (%.0f%%)",
+                as.character(surf00$method), n_finite, length(z00),
+                100 * n_finite / length(z00)))
 
-# How much of the grid of record does the 2000 surface actually cover?
-# The grid spans T 202-395.5 and S 100-1500, while this experiment only reaches
-# T 104-382 and S 54-634, so most of it is necessarily empty.
-n_finite <- sum(is.finite(R_surfdat_00$z))
-message(sprintf("2000 surface on the grid of record: %d of %d nodes finite (%.0f%%)",
-                n_finite, length(R_surfdat_00$z),
-                100 * n_finite / length(R_surfdat_00$z)))
+covered <- which(is.finite(z00), arr.ind = TRUE)
+message(sprintf("  covering T %.1f-%.1f C, S %.0f-%.0f mmol/kg",
+                min(T_grid_00[covered[, 1]]), max(T_grid_00[covered[, 1]]),
+                min(S_grid_00[covered[, 2]]), max(S_grid_00[covered[, 2]])))
 
-covered <- which(is.finite(R_surfdat_00$z), arr.ind = TRUE)
-if (nrow(covered) > 0) {
-    message(sprintf("  covering T %.1f-%.1f C, S %.0f-%.0f mmol/kg",
-                    min(T_grid[covered[, 1]]), max(T_grid[covered[, 1]]),
-                    min(S_grid[covered[, 2]]), max(S_grid[covered[, 2]])))
+# Check that the points carried through Matlab are the ones read here, so a
+# stale surfdat2000.mat cannot silently disagree with the CSVs in data/.
+stopifnot(nrow(cal00) == length(surf00$Craw))
+raw_matlab <- tibble(NaCl_mmol_kg = as.vector(surf00$Sraw),
+                     Temperature_C = as.vector(surf00$Traw),
+                     C = as.vector(surf00$Craw)) %>%
+    arrange(NaCl_mmol_kg, Temperature_C)
+raw_here <- cal00 %>% arrange(NaCl_mmol_kg, Temperature_C)
+if (max(abs(raw_here$C - raw_matlab$C)) > 1e-9 ||
+    max(abs(raw_here$Temperature_C - raw_matlab$Temperature_C)) > 1e-9) {
+    stop("surfdat2000.mat was built from different data than data/2000_JdF -- rebuild it")
 }
 
-# Matrix format for plotting, matching 1_Read_Calibration_Data.R:
-# interp returns z[i, j] = f(x[i], y[j]), temperature down rows, salt across
-# columns -- the transpose of the Matlab layout.
-R_surfdat_00$T_grid <- matrix(data = R_surfdat_00$x,
-                              nrow = length(R_surfdat_00$x),
-                              ncol = length(R_surfdat_00$y),
-                              byrow = FALSE)
-R_surfdat_00$S_grid <- matrix(data = R_surfdat_00$y,
-                              nrow = length(R_surfdat_00$x),
-                              ncol = length(R_surfdat_00$y),
-                              byrow = TRUE)
+# The dense surface over the data's own range, for plotting the 2000 surface on
+# its own rather than on the (much larger) grid of record.
+T_nat_00 <- sort(unique(as.vector(surf00$Tnat)))
+S_nat_00 <- sort(unique(as.vector(surf00$Snat)))
+z00_nat <- t(surf00$Cnat)
 
-# Caveats -----------------------------------------------------------------
+# Caveat ------------------------------------------------------------------
 
-# Two things to keep in mind before reading anything into this surface:
-#
-# 1. Four temperature points per isohaline, and C(T) is strongly non-monotonic --
-#    it rises to a maximum near 300 C and falls away by 382 C. Linear
-#    triangulation across 20 points represents that curvature far more crudely
-#    than TSfit3's spline pre-pass did. This is the price of holding the
-#    algorithm constant across the two datasets, and it is paid on the 2000 side
-#    because that dataset is the sparser of the two.
-# 2. Pressure is not constant: 220 bar except the 382 C block at 300 bar, where
-#    the 2007 run sat near 256 kgf/cm2 throughout. The two calibrations are
-#    therefore not at matched pressure at the top of the temperature range.
+# Pressure is not constant across this experiment: 220 bar except the 382 C
+# block, which ran at 300 bar, where the 2007 run sat near 256 kgf/cm2
+# throughout. The two calibrations are therefore not at matched pressure at the
+# top of the temperature range.

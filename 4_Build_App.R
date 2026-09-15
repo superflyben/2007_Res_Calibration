@@ -86,6 +86,36 @@ band_stats <- resid %>%
               .groups = "drop") %>%
     mutate(rel = f / .env$f)
 
+# The high-temperature boundary -------------------------------------------
+
+# Above about 365 C the two calibrations stop measuring the same thing. The 2007
+# run sampled the conductivity cliff at low salt directly (350 C -> 0.463,
+# 380 C -> 0.214 at 100 mmol/kg); the 2000 run has no point between 299 and
+# 382 C and so renders a gentle decline there, and its 382 C block was run at
+# 300 bar against roughly 251 bar for 2007 -- and the position of that cliff is
+# strongly pressure dependent. The divergence above the line is therefore a
+# result about the two experiments, not scatter, which is why the surface is
+# drawn whole and the line is drawn on it rather than the band being cut away.
+T_MARK <- 365
+
+# trace the line across the surface at T_MARK, following the deviation
+i_lo <- max(which(T_grid <= T_MARK))
+w <- (T_MARK - T_grid[i_lo]) / (T_grid[i_lo + 1] - T_grid[i_lo])
+z_mark <- deviation_pct[i_lo, ] * (1 - w) + deviation_pct[i_lo + 1, ] * w
+keep <- is.finite(z_mark)
+
+# Headline statistics, with and without the divergent band -------------------
+
+band_summary <- function(mask, label) {
+    ff <- sum(z00[mask] * z07[mask]) / sum(z00[mask]^2)
+    dv <- 100 * (ff * z00[mask] - z07[mask]) / z07[mask]
+    list(label = label, n = sum(mask), f = ff, invf = 1 / ff,
+         rms = sqrt(mean(dv^2)), max = max(abs(dv)))
+}
+below <- overlap & (row(z07) <= max(which(T_grid <= T_MARK)))
+headline <- list(band_summary(overlap, "All overlapping nodes"),
+                 band_summary(below, sprintf("T \u2264 %d \u00b0C", T_MARK)))
+
 # Assemble ----------------------------------------------------------------
 
 payload <- list(
@@ -99,7 +129,12 @@ payload <- list(
     p00 = list(t = cal00$Temperature_C,
                s = cal00$NaCl_mmol_kg,
                c = cal00$C),
+    mark = list(t = T_MARK,
+                s = S_grid[keep],
+                z = z_mark[keep]),
     stats = list(
+        headline = headline,
+        tmark = T_MARK,
         n = sum(overlap),
         tmin = min(T_grid[idx[, 1]]), tmax = max(T_grid[idx[, 1]]),
         smin = min(S_grid[idx[, 2]]), smax = max(S_grid[idx[, 2]]),

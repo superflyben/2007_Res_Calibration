@@ -87,12 +87,15 @@ probe's voltage channel; NaCl is in mmol/kg.</p>
 <p class="note">The 2000 surface multiplied by one global factor
 <strong>f&nbsp;=&nbsp;<span id="fval"></span></strong>, fitted by least squares across every
 overlapping node, then differenced against the 2007 surface. If the two probes differed only in
-electrode surface area, this would be flat noise about zero.</p>
+electrode surface area, this would be flat noise about zero. The dark line marks 365&nbsp;°C,
+above which the two experiments stop resolving the same structure; the surface is drawn whole
+past it, because what happens there is a finding rather than a defect.</p>
 <div class="card" style="margin-top:14px">
   <div id="pdev" class="plot-wide"></div>
 </div>
 
-<div id="stats" style="margin-top:22px"></div>
+<div id="headline" style="margin-top:22px"></div>
+<div id="stats" style="margin-top:26px"></div>
 
 <h2>Conductivity to chloride</h2>
 <p class="note">Enter a measured temperature and conductivity. The scale factor is applied to the
@@ -181,8 +184,16 @@ Plotly.newPlot("pdev",
     type: "surface", x: DATA.dev.t, y: DATA.dev.s, z: DATA.dev.z,
     colorscale: "RdBu", reversescale: true, cmid: 0,
     colorbar: {title: {text: "%", side: "top"}, thickness: 12, len: 0.6}
+  },
+  {
+    // where the two calibrations stop measuring the same thing: the surface is
+    // still drawn beyond it, because the divergence there is a finding
+    type: "scatter3d", mode: "lines",
+    x: DATA.mark.s.map(() => DATA.mark.t), y: DATA.mark.s, z: DATA.mark.z,
+    line: {color: "#1c1a17", width: 5},
+    name: DATA.mark.t + " °C", hoverinfo: "name"
   }],
-  Object.assign({}, BASE, {scene: devScene}),
+  Object.assign({}, BASE, {scene: devScene, showlegend: false}),
   {displayModeBar: false, responsive: true});
 
 document.getElementById("fval").textContent = DATA.f.toFixed(4);
@@ -206,6 +217,31 @@ link("pdev", ["p07", "p00"]);
 // --- summary table ---------------------------------------------------------
 (function () {
   const s = DATA.stats;
+  let hh = "<table><tr><th></th><th>n</th><th>f</th><th>1/f</th>" +
+           "<th>residual RMS</th><th>worst</th></tr>";
+  s.headline.forEach(r => {
+    hh += `<tr><td>${r.label}</td><td>${r.n}</td><td>${r.f.toFixed(4)}</td>` +
+          `<td>${r.invf.toFixed(3)}</td><td>${r.rms.toFixed(1)}%</td>` +
+          `<td>${r.max.toFixed(0)}%</td></tr>`;
+  });
+  hh += "</table><p class='note' style='margin-top:12px'>" +
+        `The scale factor barely moves between the two rows, so the divergence above ` +
+        `${s.tmark} °C adds scatter rather than bias and f can be quoted as it stands. How ` +
+        `well the two agree is another matter: below the line one factor reconciles them to ` +
+        `${s.headline[1].rms.toFixed(1)}% with a worst case of ` +
+        `${s.headline[1].max.toFixed(0)}%, against ${s.headline[0].rms.toFixed(1)}% and ` +
+        `${s.headline[0].max.toFixed(0)}% once the high-temperature band is included.</p>` +
+        "<p class='note' style='margin-top:10px'>" +
+        `That band is a result rather than noise. At 100 mmol/kg the 2007 surface falls 46% ` +
+        `between 345 and 375 °C, the conductivity cliff near the critical region, measured ` +
+        `directly at 350 and 380 °C. The 2000 experiment has no point between 299 and 382 °C ` +
+        `and so cannot see it, and its 382 °C block ran at 300 bar against roughly 251 bar ` +
+        `for 2007 — and the position of that cliff is strongly pressure dependent. Both ` +
+        `effects push the same way, and this data cannot separate them. Near the critical ` +
+        `region, where brine phase separation lives, the two calibrations are not ` +
+        `interchangeable.</p>`;
+  document.getElementById("headline").innerHTML = hh;
+
   let h = "<table><tr><th>Salt band (mmol/kg)</th><th>n</th><th>f in band</th>" +
           "<th>vs global</th><th>mean deviation</th></tr>";
   s.bands.forEach(b => {

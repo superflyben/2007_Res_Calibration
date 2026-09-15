@@ -3,6 +3,10 @@
 .RData
 .Ruserdata
 *.html
+# ...but the app is the deliverable: the template is source, and the built page
+# is what GitHub Pages serves (rebuilding it needs both R and Matlab)
+!app/app_template.html
+!app/Calibration_App.html
 2007_Res_Calibration.Rproj
 documents/
 .DS_Store
